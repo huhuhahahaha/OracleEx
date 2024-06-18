@@ -1,0 +1,206 @@
+-- INSERT
+-- 테이블 구조를 빠르게 확인하는 방법
+DESC DEPARTMENTS;
+
+INSERT INTO DEPARTMENTS VALUES(280, 'DEVELOPER', NULL, 1700);
+
+SELECT * FROM DEPARTMENTS;
+-- DML 문은 트랜잭션이 항상 기록되는데, ROLLBACK 이용해서 되돌릴 수 있음
+ROLLBACK;
+
+-- 컬럼명만 지정가능
+INSERT INTO DEPARTMENTS(DEPARTMENT_ID,DEPARTMENT_NAME,LOCATION_ID)
+            VALUES (280,'DEVELOPER',1700);
+SELECT * FROM DEPARTMENTS;
+ROLLBACK;
+
+--INSERT 구문도 서브쿼리가 됨(많이 사용되지는 않음),단일행
+INSERT INTO DEPARTMENTS(DEPARTMENT_ID, DEPARTMENT_NAME)
+            VALUES( (SELECT MAX(DEPARTMENT_ID)+10 FROM DEPARTMENTS), 'DEV');
+SELECT * FROM DEPARTMENTS;    
+ROLLBACK;
+
+-- INSERT 구문의 서브쿼리, 여러행
+CREATE TABLE EMPS AS (SELECT * FROM EMPLOYEES WHERE 1=2);
+SELECT * FROM EMPS; -- 이 테이블에 원본테이블의 특정 데이터를 퍼다 나름
+INSERT INTO EMPS(EMPLOYEE_ID, LAST_NAME, EMAIL, HIRE_DATE, JOB_ID) 
+                (SELECT EMPLOYEE_ID, LAST_NAME, EMAIL, HIRE_DATE, JOB_ID FROM EMPLOYEES WHERE JOB_ID = 'SA_MAN');
+COMMIT;
+
+----------------------------------------------
+-- UPDATE
+SELECT * FROM EMPS;
+
+-- UPDATE 구문을 사용하기 전에는 SELECT로 해당값이 고유한 '행'인지 확인하고 업데이트 처리해야합니다
+UPDATE EMPS SET SALARY = 1000, COMMISSION_PCT = 0.1 WHERE EMPLOYEE_ID = 148;
+UPDATE EMPS SET SALARY = NVL(SALARY,0) +1000 WHERE EMPLOYEE_ID >=145;
+
+-- 업데이트 구문의 서브쿼리
+-- 단일값 서브쿼리
+UPDATE EMPS SET SALARY = (SELECT SALARY FROM EMPLOYEES WHERE EMPLOYEE_ID = 100) WHERE EMPLOYEE_ID = 148;
+
+-- 여러값 서브쿼리
+UPDATE EMPS SET(SALARY, COMMISSION_PCT, MANAGER_ID, DEPARTMENT_ID)
+            = (SELECT SALARY, COMMISSION_PCT, MANAGER_ID, DEPARTMENT_ID FROM EMPLOYEES WHERE EMPLOYEE_ID =100)
+            WHERE EMPLOYEE_ID= 148;
+-- WHERE 절에도 서브쿼리가능
+UPDATE EMPS
+SET SALARY = 1000
+WHERE EMPLOYEE_ID IN (SELECT EMPLOYEE_ID FROM EMPLOYEES WHERE JOB_ID='IT_PROG');
+
+---------------------------------
+-- DELETE
+--DELETE FROM
+--WHERE 기본구문임
+-- 트랜잭션이 있긴하지만, 삭제하기전에 반드시 SELECT문으로 삭제조건에 해당하는 데이터를 확인하는 습관을 갖자
+SELECT * FROM EMPS WHERE EMPLOYEE_ID = 148;
+
+DELETE FROM EMPS WHERE EMPLOYEE_ID=148;
+-- DELETE의 서브쿼리
+DELETE FROM EMPS WHERE EMPLOYEE_ID IN (SELECT EMPLOYEE_ID FROM EMPLOYEES WHERE DEPARTMENT_ID =80);
+ROLLBACK;
+-----------------------------------
+-- DELETE문이 전부 실행되지는 않음
+-- 테이블이 연관관계(FK)제약을 가지고 있다면, 지워지지않음(참조무결성 제약)
+DELETE FROM DEPARTMENTS WHERE DEPARTMENT_ID = 100;
+
+-- MERGE구문
+--MERGE INTO 대상
+--USING (병합할 것,서브쿼리절이 들어감)
+--ON (병합조건)
+--WHEN MATCHED THEN 일치하면
+--UPDATE
+--WHEN NOT MATCHED THEN 일치하지않으면
+--INSERT
+---------------------
+--직접 값을 넣고자 한다면 USING 절에 DUAL 사용
+---------------------------------
+SELECT * FROM EMPS; --에 머지를 써보자
+MERGE INTO EMPS A --A는 타켓 테이블
+USING (SELECT * FROM EMPLOYEES WHERE JOB_ID = 'IT_PROG') B --B는 합칠테이블
+ON (A.EMPLOYEE_ID = B.EMPLOYEE_ID)
+WHEN MATCHED THEN --ON절의 조건이 맞는 경우
+    UPDATE SET A.SALARY = B.SALARY,
+               A.COMMISSION_PCT = B.COMMISSION_PCT,
+               A.HIRE_DATE=SYSDATE
+WHEN NOT MATCHED THEN --ON절의 조건이 맞지 않는 경우
+    INSERT /*INTO는 안써도됨*/ (LAST_NAME,EMAIL,HIRE_DATE,JOB_ID)
+    VALUES(B.LAST_NAME,B.EMAIL,B.HIRE_DATE,B.JOB_ID);
+SELECT * FROM EMPS;
+ROLLBACK;
+-- 직접 값을 넣는다면 DUAL을 쓸 수 있음
+MERGE INTO EMPS A
+USING DUAL
+ON(A.EMPLOYEE_ID =107) -- 조건
+WHEN MATCHED THEN 
+    UPDATE SET A.SALARY =10000,
+               A.COMMISSION_PCT = 0.1,
+               A.DEPARTMENT_ID = 100
+WHEN NOT MATCHED THEN
+    INSERT (EMPLOYEE_ID,LAST_NAME,EMAIL,HIRE_DATE,JOB_ID)
+    VALUES (107,'HONG','EXAMPLE',SYSDATE,'DBA');
+SELECT * FROM EMPS;
+ROLLBACK;
+
+---------------
+--CTAS구문(CREATE TABLE AS SELECT)
+--사본 테이블을 만들때 사용
+DROP TABLE EMPS;
+--일단 날리고
+CREATE TABLE EMPS AS (SELECT * FROM EMPLOYEES); --데이터까지복사
+
+CREATE TABLE EMPS AS (SELECT * FROM EMPLOYEES WHERE 1=2); --구조(틀)만 복사
+SELECT * FROM EMPS;
+-----------------------------------
+--DML 연습문제
+-- 문제 1. DEPTS테이블을 생성하고 데이터를 INSERT하세용
+--CREATE TABLE DEPTS (
+-- DEPARTMENT_ID NUMBER NOT NULL,
+-- DEPARTMENT_NAME VARCHAR2(100) NOT NULL,
+-- MANGER_ID NUMBER NULL,
+-- LOCATION_ID NUMBER NULL
+--);
+--SELECT * FROM DEPTS; 
+--INSERT INTO DEPTS VALUES (320,'영업',303,1700);
+DROP TABLE DEPTS;
+CREATE TABLE DEPTS AS (SELECT * FROM DEPARTMENTS);
+INSERT INTO DEPTS VALUES (320,'영업',303,1700);
+SELECT * FROM DEPTS;
+ 
+--문제 2.
+--DEPTS테이블의 데이터를 수정합니다
+--1. department_name 이 IT Support 인 데이터의 department_name을 IT bank로 변경
+--2. department_id가 290인 데이터의 manager_id를 301로 변경
+--3. department_name이 IT Helpdesk인 데이터의 부서명을 IT Help로 , 매니저아이디를 303으로, 지역아이디를
+--1800으로 변경하세요
+--4. 부서번호(290,300,310,320) 의 매니저아이디를 301로 한번에 변경하세요.
+UPDATE DEPTS
+SET DEPARTMENT_NAME = 'IT bank' WHERE DEPARTMENT_NAME = 'IT Support';
+UPDATE DEPTS SET MANAGER_ID = 301 WHERE DEPARTMENT_ID = 290;
+--UPDATE DEPTS SET (DEPARTMENT_NAME,MANAGER_ID,LOCATION_ID) = (SELECT DEPARTMENT_NAME ='IT HelP',MANAGER_ID=303,LOCATION_ID=1800) WHERE DEPARTMENT_NAME = 'IT Support';
+SELECT * FROM DEPTS;
+UPDATE DEPTS SET MANAGER_ID = 303 WHERE DEPARTMENT_NAME = 'IT Helpdesk';
+UPDATE DEPTS SET LOCATION_ID = 1800 WHERE DEPARTMENT_NAME = 'IT Helpdesk';
+UPDATE DEPTS SET DEPARTMENT_NAME = 'IT Help' WHERE DEPARTMENT_NAME = 'IT Helpdesk';
+-- 한번에 업데이트 하려면?
+-- UPDATE DEPTS SET DEPARTMENT_NAME = 'IT Help',
+--                    MANAGER_ID = 303, 이런식으로
+SELECT * FROM DEPTS;
+UPDATE DEPTS SET MANAGER_ID = 301
+WHERE DEPARTMENT_ID IN (290,300,310,320);
+--문제 3.
+--삭제의 조건은 항상 primary key로 합니다, 여기서 primary key는 department_id라고 가정합니다.
+--1. 부서명 영업부를 삭제 하세요
+--2. 부서명 NOC를 삭제하세요
+--
+SELECT*FROM DEPTS;
+DELETE FROM DEPTS WHERE DEPARTMENT_NAME = '영업';
+DELETE FROM DEPTS WHERE DEPARTMENT_NAME = 'NOC';
+SELECT*FROM DEPTS;
+--
+--문제4
+--1. Depts 사본테이블에서 department_id 가 200보다 큰 데이터를 삭제해 보세요.
+DELETE FROM DEPTS WHERE DEPARTMENT_ID > 200;
+--2. Depts 사본테이블의 manager_id가 null이 아닌 데이터의 manager_id를 전부 100으로 변경하세요.
+UPDATE DEPTS SET MANAGER_ID = 100 WHERE MANAGER_ID IS NOT NULL;
+--3. Depts 테이블은 타겟 테이블 입니다.
+--4. Departments테이블은 매번 수정이 일어나는 테이블이라고 가정하고 Depts와 비교하여
+--일치하는 경우 Depts의 부서명, 매니저ID, 지역ID를 업데이트 하고, 새로유입된 데이터는 그대로 추가해주는 merge문을 작성하세요.
+MERGE INTO DEPTS D1
+USING (SELECT * FROM DEPARTMENTS)D2
+ON (D1.DEPARTMENT_ID = D2.DEPARTMENT_ID)
+WHEN MATCHED THEN
+    UPDATE SET D1.DEPARTMENT_NAME = D2.DEPARTMENT_NAME,
+               D1.MANAGER_ID=D2.MANAGER_ID,
+               D1.LOCATION_ID=D2.LOCATION_ID
+WHEN NOT MATCHED THEN
+    INSERT VALUES (D2.DEPARTMENT_ID,
+                   D2.DEPARTMENT_NAME,
+                   D2.MANAGER_ID,
+                   D2.LOCATION_ID);
+SELECT * FROM DEPTS;
+--
+--문제 5
+--1. jobs_it 사본 테이블을 생성하세요 (조건은 min_salary가 6000보다 큰 데이터만 복사합니다)
+CREATE TABLE JOBS_IT AS (SELECT * FROM JOBS WHERE MIN_SALARY > 6000);
+--2. jobs_it 테이블에 아래 데이터를 추가하세요
+INSERT INTO JOBS_IT VALUES ('IT_DEV','아이티개발팀',6000,20000);
+INSERT INTO JOBS_IT VALUES ('NET_DEV','네트워크개발팀',5000,20000);
+INSERT INTO JOBS_IT VALUES ('SEC_DEV','보안개발팀',6000,20000);
+SELECT * FROM JOBS_IT;
+--3. obs_it은 타겟 테이블 입니다
+--jobs테이블은 매번 수정이 일어나는 테이블이라고 가정하고 jobs_it과 비교하여
+--min_salary컬럼이 0보다 큰 경우 기존의 데이터는 min_salary, max_salary를 업데이트 하고 새로 유입된
+--데이터는 그대로 추가해주는 merge문을 작성하세요.
+MERGE INTO JOBS_IT J1
+USING (SELECT * FROM JOBS WHERE MIN_SALARY>0) J2
+ON(J1.JOB_ID = J2.JOB_ID)
+WHEN MATCHED THEN
+    UPDATE SET J1.MIN_SALARY = J2.MIN_SALARY,
+               J1.MAX_SALARY = J2.MAX_SALARY
+WHEN NOT MATCHED THEN
+    INSERT VALUES (J2.JOB_ID,
+                   J2.JOB_TITLE,
+                   J2.MIN_SALARY,
+                   J2.MAX_SALARY);
+SELECT * FROM JOBS_IT;
